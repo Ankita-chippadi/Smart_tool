@@ -1,0 +1,568 @@
+import React, { useEffect, useRef, useState } from 'react';
+import ApexCharts from 'apexcharts';
+import 'tailwindcss/tailwind.css';
+
+const LineGraph = ({ data, isOtherWindowOpen, selectedFiles: propSelectedFiles }) => {
+  const chartRef = useRef(null);
+  const [viewBounds, setViewBounds] = useState(false);
+  const [chart, setChart] = useState(null);
+  const [boundsVisible, setBoundsVisible] = useState(false); // State to manage bounds visibility
+
+  const [line1Position, setLine1Position] = useState(null);
+  const [line2Position, setLine2Position] = useState(null);
+  const [filteredSeries, setFilteredSeries] = useState({
+    tension: true,
+    torsion: true,
+    bendingMomentY: true,
+    temperature: true,
+  });
+  const [chartData, setChartData] = useState([]);
+  // State to manage the list of saved files
+  const [savedFiles, setSavedFiles] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState(propSelectedFiles || []); 
+       
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState(null);
+   
+  const handleConfirmation = (confirmed) => {
+    // Close the confirmation modal
+    setShowConfirmation(false);
+  
+    // If user confirmed, delete the file
+    if (confirmed && fileToDelete) {
+      const updatedFiles = savedFiles.filter((file) => file.fileName !== fileToDelete);
+      setSavedFiles(updatedFiles);
+
+      // Clear the selectedFiles state
+      setSelectedFiles((prevSelectedFiles) => prevSelectedFiles.filter((file) => file !== fileToDelete));
+    }
+    // Clear the fileToDelete state
+    setFileToDelete(null);
+  };
+  const staticChartData = [
+    { x: 0, tension: 0, torsion: 0, bendingMomentY: 0, temperature: 0 },
+    { x: 0, tension: 0, torsion: 0, bendingMomentY: 0, temperature: 0 },
+    // Add more static data points as needed
+  ];
+  
+  useEffect(() => {
+    if (!chartRef.current) {
+      return;
+    }
+
+    const options = {
+      chart: {
+        height: 500,
+        type: 'line',
+        events: {
+          mounted: function (chartContext) {
+            const base = chartContext.chart?.w?.globals?.dom?.base;
+
+            if (base) {
+              base.addEventListener('mousemove', function (event) {
+                const xVal = chartContext.xaxis[0].invert(event.clientX - chartContext.chartRect.left);
+                const seriesData = chartContext.getSeriesSnapshots();
+
+                let closestPoint = null;
+                let closestDistance = Number.MAX_VALUE;
+
+                for (const series of seriesData) {
+                  for (const dataPoint of series.data) {
+                    const distance = Math.abs(dataPoint.x - xVal);
+
+                    if (distance < closestDistance) {
+                      closestDistance = distance;
+                      closestPoint = dataPoint;
+                    }
+                  }
+                }
+
+                chartContext.w.globals.tooltipTitle = closestPoint.seriesName;
+                chartContext.w.globals.tooltipLabels = [closestPoint.x.toFixed(3)];
+                chartContext.w.globals.tooltipY = [closestPoint.y.toFixed(3)];
+
+                
+              });
+            }
+          },
+        },
+      },
+      xaxis: {
+        type: 'datetime', // Use datetime type for x-axis
+        labels: {
+          formatter: (val) => {
+            const date = new Date(val);
+            const hours = date.getUTCHours();
+            const minutes = date.getUTCMinutes();
+            const seconds = date.getUTCSeconds();
+            const milliseconds = date.getUTCMilliseconds();
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${milliseconds}`;
+        },
+      },
+    },
+      yaxis: [
+        {
+          title: {
+            text: 'Tension',
+          },
+          min: -187,
+          max: 1050,
+          tickAmount: 22,
+          labels: {
+            formatter: (value) => value.toFixed(1),
+          },
+        },
+        {
+          title: {
+            text: 'Torsion',
+          },
+          min: 0,
+          max: 9,
+          tickAmount: 18,
+          labels: {
+            formatter: (value) => value.toFixed(1),
+          },
+        },
+        {
+          title: {
+            text: 'Bending Moment Y',
+          },
+          min: 0,
+          max: 12.5,
+          tickAmount: 25,
+          labels: {
+            formatter: (value) => value.toFixed(1),
+          },
+        },
+        {
+          opposite: true,
+          title: {
+            text: 'Temperature',
+          },
+          min: 26.6,
+          max: 31.4,
+          tickAmount: 15,
+          labels: {
+            formatter: (value) => value.toFixed(1),
+          },
+        },
+      ],
+      tooltip: {
+        enabled: true,
+        x: {
+          formatter: (val) => {
+            if (val === null) {
+              return ''; // or handle it in a way that makes sense for your application
+            }
+    
+            const date = new Date(val);
+            const hours = date.getUTCHours();
+            const minutes = date.getUTCMinutes();
+            const seconds = date.getUTCSeconds();
+            const milliseconds = date.getUTCMilliseconds();
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${milliseconds}`;
+          },
+        },
+        
+      },
+    };
+    const chartOptions = { ...options, series: getSeries(staticChartData) };
+    // Destroy previous chart instance if it exists
+    if (chartRef.current.chart) {
+      chartRef.current.chart.destroy();
+    }
+    const newChart = new ApexCharts(chartRef.current, chartOptions);
+    newChart.render();
+
+    // Cleanup function to destroy the chart when the component unmounts
+    return () => {
+      if (newChart) {
+        newChart.destroy();
+      }
+    };
+  }, []);
+// ----------------------------------- 
+useEffect(() => {
+  if (viewBounds && chart) {
+    drawBounds();
+  } else {
+    removeBounds();
+  }
+}, [viewBounds, chart]);
+
+const drawBounds = () => {
+  const xaxis = chartRef.current.chart.w.globals.xaxis[0];
+  const x1 = xaxis.labels[0].x;
+  const x2 = xaxis.labels[xaxis.labels.length - 1].x;
+
+  chartRef.current.chart.addXaxisAnnotation({
+    x: x1,
+    strokeDashArray: 0,
+    borderColor: '#000',
+    label: {
+      borderWidth: 0,
+      text: '',
+      textAnchor: 'middle'
+    }
+  });
+
+  chartRef.current.chart.addXaxisAnnotation({
+    x: x2,
+    strokeDashArray: 0,
+    borderColor: '#000',
+    label: {
+      borderWidth: 0,
+      text: '',
+      textAnchor: 'middle'
+    }
+  });
+};
+
+const removeBounds = () => {
+  if (chartRef.current && chartRef.current.chart) {
+      const xaxis = chartRef.current.chart.xaxis;
+      xaxis.annotations.clearAnnotations();
+  }
+};
+const handleLineDrag = (line, newPosition) => {
+  // Update the position of the dragged line based on line identifier (line1 or line2)
+  if (line === 'line1') {
+    setLine1Position(newPosition);
+  } else if (line === 'line2') {
+    setLine2Position(newPosition);
+  }
+};
+const toggleViewBounds = () => {
+  setViewBounds(prevViewBounds => !prevViewBounds);
+  if (!viewBounds) {
+      removeBounds();
+  }
+};
+// -----------------------------------
+
+  useEffect(() => {
+    if (!chartRef.current || !data || typeof data !== 'string') {
+      return;
+    }
+  
+    const lines = data.split('\n');
+
+    // Find the unit row
+    const unitRow = lines.find((line) => line.startsWith('#unit type:'));
+    const units = unitRow ? unitRow.split(';').map((unit) => unit.trim()) : [];
+  
+    const newChartData = lines
+    .filter((line) => !line.startsWith('#') && line.trim() !== '' && !isNaN(line.trim().split(';')[0]))// Filter out comments and empty lines
+      .map((line, index) => {
+        const values = line.split(';').map((value) => parseFloat(value.replace(',', '.')));
+  
+        if (values.length < 6 || values.some(isNaN)) {
+          console.error(`Error parsing values at line ${index + 1}: ${line}`);
+          return null;
+        }
+  
+        const timeIndex = 4;
+        const time = values[timeIndex];
+  
+        if (isNaN(time)) {
+          console.error(`Error parsing time at line ${index + 1}: ${line}`);
+          return null;
+        }
+  
+        return {
+          x: time,
+          tension: values[0],
+          torsion: values[1],
+          bendingMomentY: values[3],
+          temperature: values[5],
+        };
+      })
+      .filter((row) => row !== null);
+  
+      setChartData(newChartData);
+      //----------------minmax y axis -----------------//
+     const minYValues = chartData.reduce(
+      (minValues, dataPoint) => {
+        return {
+          tension: Math.min(minValues.tension, dataPoint.tension),
+          torsion: Math.min(minValues.torsion, dataPoint.torsion),
+          bendingMomentY: Math.min(minValues.bendingMomentY, dataPoint.bendingMomentY),
+          temperature: Math.min(minValues.temperature, dataPoint.temperature),
+        };
+      },
+      {
+        tension: Number.MAX_VALUE,
+        torsion: Number.MAX_VALUE,
+        bendingMomentY: Number.MAX_VALUE,
+        temperature: Number.MAX_VALUE,
+      }
+    );
+  
+    const maxYValues = chartData.reduce(
+      (maxValues, dataPoint) => {
+        return {
+          tension: Math.max(maxValues.tension, dataPoint.tension),
+          torsion: Math.max(maxValues.torsion, dataPoint.torsion),
+          bendingMomentY: Math.max(maxValues.bendingMomentY, dataPoint.bendingMomentY),
+          temperature: Math.max(maxValues.temperature, dataPoint.temperature),
+        };
+      },
+      {
+        tension: Number.MIN_VALUE,  
+        torsion: Number.MIN_VALUE,
+        bendingMomentY: Number.MIN_VALUE,
+        temperature: Number.MIN_VALUE,
+      }
+    );
+    const xMin = Math.min.apply(null, chartData.map(item => item.x));
+    const xMax = Math.max.apply(null, chartData.map(item => item.x));
+    const numTicks = 15; // Change this to the desired number of ticks
+
+ const xRange = xMax - xMin;
+ const tickInterval = xRange / (numTicks - 1);
+    //---------------end--------------------//
+      const options = {
+        chart: {
+          height: 500,
+          type: 'line',
+          events: {
+            mounted: function (chartContext) {
+              const base = chartContext.chart?.w?.globals?.dom?.base;
+      
+              if (base) {
+                base.addEventListener('mousemove', function (event) {
+                  const xVal = chartContext.xaxis[0].invert(event.clientX - chartContext.chartRect.left);
+                  const seriesData = chartContext.getSeriesSnapshots();
+               
+                  let closestPoint = null;
+                  let closestDistance = Number.MAX_VALUE;
+      
+                  for (const series of seriesData) {
+                    for (const dataPoint of series.data) {
+                      const distance = Math.abs(dataPoint.x - xVal);
+      
+                      if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestPoint = dataPoint;
+                      }
+                    }
+                  }
+      
+                  chartContext.w.globals.tooltipTitle = closestPoint.seriesName;
+                  chartContext.w.globals.tooltipLabels = [closestPoint.x.toFixed(3)];
+                  chartContext.w.globals.tooltipY = [closestPoint.y.toFixed(3)];
+      
+                
+                });
+              }
+            },
+          },
+        },
+        xaxis: {
+          type: 'numeric',
+          labels: {
+            formatter: (val) => {
+              const date = new Date(val * 1000); // Convert seconds to milliseconds
+              const hours = date.getUTCHours();
+              const minutes = date.getUTCMinutes();
+              const seconds = date.getUTCSeconds();
+              const milliseconds = date.getUTCMilliseconds();
+              return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${milliseconds}`;
+            },
+          },
+          tickAmount: numTicks,
+          min: xMin,
+          max: xMax,
+          tickPlacement: 'on',
+          tickInterval: tickInterval,
+         },
+        scrollX:{
+          enabled: true,
+        },
+        yaxis: [
+          {
+            title: {
+              text: `Tension (${units[0]})`,
+            },
+            min: minYValues.tension,
+            max: maxYValues.tension,
+            tickAmount: 22,
+            labels: {
+              formatter: (value) => (value !== null ? value.toFixed(1) : null),
+            },
+          },
+          {
+            title: {
+              text: `Torsion (${units[1]})`,
+            },
+            min: minYValues.torsion,
+            max: maxYValues.torsion,
+            tickAmount: 18,
+            labels: {
+              formatter: (value) => (value !== null ? value.toFixed(1) : null),
+            },
+          },
+          {
+            title: {
+              text: `Bending Moment Y (${units[3]})`,
+            },
+            min: minYValues.bendingMomentY,
+            max: maxYValues.bendingMomentY,
+            tickAmount: 25,
+            labels: {
+              formatter: (value) => (value !== null ? value.toFixed(1) : null),
+            },
+          },
+          {
+            opposite: true,
+            title: {
+              text: `Temperature (${units[5]})`,
+            },
+            min: minYValues.temperature,
+            max: maxYValues.temperature,
+            tickAmount: 15,
+            labels: {
+              formatter: (value) => (value !== null ? value.toFixed(1) : null),
+            },
+          },
+        ],
+        tooltip: {
+          enabled: true,
+          xaxis: {
+            type: 'numeric',
+            labels: {
+              formatter: (val) => {
+                const date = new Date(val * 1000); // Convert seconds to milliseconds
+                const hours = date.getUTCHours();
+                const minutes = date.getUTCMinutes();
+                const seconds = date.getUTCSeconds();
+                const milliseconds = date.getUTCMilliseconds();
+                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${milliseconds}`;
+              },
+            },
+            axisTicks: {
+              show: true,
+            },
+            annotations: {
+              xaxis: [
+                {
+                  x: xMin, // Set the initial visible range
+                  x2: xMax,
+                  borderColor: '#999',
+                  label: {
+                    text: 'Zoom to see more',
+                    position: 'left',
+                    style: {
+                      color: '#fff',
+                      background: '#333',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+          scrollX:{
+            enabled: true,
+          },
+        },
+        // series: getSeries(filteredChartData),
+        stroke:{
+          width:1,
+          },
+        };
+      console.log("chartData:", chartData);
+
+      const filteredChartData = chartData.map((item) => ({
+        x: item.x,
+        tension: filteredSeries.tension ? item.tension : null,
+        torsion: filteredSeries.torsion ? item.torsion : null,
+        bendingMomentY: filteredSeries.bendingMomentY ? item.bendingMomentY : null,
+        temperature: filteredSeries.temperature ? item.temperature : null,
+      }));
+      console.log("filteredChartData:", filteredChartData); // Add this line
+
+      const cleanedChartData = filteredChartData.map((item) => ({
+        x: item.x,
+        tension: isNaN(item.tension) ? 0 : item.tension,
+        torsion: isNaN(item.torsion) ? 0 : item.torsion,
+        bendingMomentY: isNaN(item.bendingMomentY) ? 0 : item.bendingMomentY,
+        temperature: isNaN(item.temperature) ? 0 : item.temperature,
+      }));
+      console.log("cleanedChartData:", cleanedChartData);
+      const chartOptions = { ...options, series: getSeries(filteredChartData) };
+    const newChart = new ApexCharts(chartRef.current, chartOptions);
+    newChart.render();
+       // Destroy previous chart instance if it exists
+       if (!isOtherWindowOpen && chartRef.current) {
+        // Rest of your existing code for rendering the chart
+      }
+    return () => {
+      if (newChart) {  
+        newChart.destroy();
+      }
+    };
+    // updateChartWithSelectedFiles(selectedFilesData);
+  }, [isOtherWindowOpen, data, filteredSeries]);     
+  
+ 
+  const getSeries = (data) => [
+    { name: 'Tension', data: data.map((item) => ({ x: item.x, y: item.tension })), color: '#000080' },
+    { name: 'Torsion', data: data.map((item) => ({ x: item.x, y: item.torsion })), color: '#800080' },
+    { name: 'Bending Moment Y', data: data.map((item) => ({ x: item.x, y: item.bendingMomentY })), color: '#ADD8E6' },
+    { name: 'Temperature', data: data.map((item) => ({ x: item.x, y: item.temperature })), color: '#ff0000' },
+  ];
+  return (
+    <div>
+      <div
+        style={{ 
+          display: isOtherWindowOpen ? 'none' : 'flex',
+          flexDirection: 'row',
+          position: 'relative',
+          zIndex: 1, // Set the zIndex to 1 for LineGraph
+          opacity: 1,
+          width: '100%',
+          top: '10px',
+        }}
+        className={isOtherWindowOpen ? 'hidden' : 'block'}
+      >
+        <div ref={chartRef} style={{ flex: 1 }} />
+        <button onClick={toggleViewBounds}>
+          {viewBounds ? 'Hide Bounds' : 'View Bounds'}
+        </button>
+      </div>
+      
+      {/* Add draggable lines */}
+      {viewBounds && line1Position && line2Position && (
+        <div>
+          <div
+            className="draggable-line"
+            style={{
+              position: 'absolute',
+              left: `${line1Position}px`,
+              height: '100%',
+              width: '20px',
+              background: 'black',
+              cursor: 'ew-resize',
+            }}
+            draggable="true"
+            onDrag={(e) => handleLineDrag('line1', e.clientX)}
+          ></div>
+          <div
+            className="draggable-line"
+            style={{
+              position: 'absolute',
+              left: `${line2Position}px`,
+              height: '100%',
+              width: '20px',
+              background: 'black',
+              cursor: 'ew-resize',
+            }}
+            draggable="true"
+            onDrag={(e) => handleLineDrag('line2', e.clientX)}
+          ></div>
+        </div>
+      )}
+    </div>
+  );
+};
+export default LineGraph;

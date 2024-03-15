@@ -1,0 +1,464 @@
+// import React, { useState, useEffect } from 'react';
+// import ApexCharts from 'react-apexcharts';
+
+// const ToolLifePlot = () => {
+//   const [selectedFiles, setSelectedFiles] = useState([]);
+//   const [folderPath, setFolderPath] = useState('');
+//   const [selectedFolderCheckboxes, setSelectedFolderCheckboxes] = useState({});
+//   const [selectedFolderFiles, setSelectedFolderFiles] = useState([]);
+//   const [showPopup, setShowPopup] = useState(false);
+//  const [popupMessage, setPopupMessage] = useState('');
+//  const [graphData, setGraphData] = useState([]);
+//   const [showGraph, setShowGraph] = useState(true);
+//   const [points, setPoints] = useState('');
+//   const [filter, setFilter] = useState('');
+//   const [chartOptions, setChartOptions] = useState({
+//     series: [
+//       {
+//         name: '',
+//         data: [],
+//       },
+//     ],
+//     chart: {
+//       height: 350,
+//       type: 'line',
+//       dropShadow: {
+//         enabled: true,
+//         color: '#000',
+//         top: 18,
+//         left: 7,
+//         blur: 10,
+//         opacity: 0.2,
+//       },
+//       toolbar: {
+//         show: false,
+//       },
+//     },
+//     colors: ['#77B6EA'],
+//     stroke: {
+//       curve: 'smooth',
+//     },
+//     title: {
+//       align: 'left',
+//     },
+//     grid: {
+//       borderColor: '#e7e7e7',
+//       row: {
+//         colors: ['#f3f3f3', 'transparent'],
+//         opacity: 0.5,
+//       },
+//     },
+//     markers: {
+//       size: 1,
+//     },
+//     xaxis: {
+//       type: 'datetime',
+//       title: {
+//         text: 'Time (milliseconds)',
+//       },
+//       labels: {
+//         datetimeFormatter: {
+//           hour: 'HH',
+//           minute: 'mm',
+//           second: 'ss',
+//         },
+//         formatter: (value) => {
+//           const date = new Date(value);
+//           return date.toISOString().slice(11, -1);
+//         },
+//       },
+//     },
+//     yaxis: {
+//       title: {
+//         text: 'Bending Moment',
+//       },
+//       min: 0,
+//       max: 1.2,
+//       tickAmount: 12,
+//       labels: {
+//         formatter: (value) => value.toFixed(1),
+//       },
+//     },
+//     legend: {
+//       position: 'top',
+//       horizontalAlign: 'right',
+//       floating: true,
+//       offsetY: -25,
+//       offsetX: -5,
+//     },
+//   });
+
+
+//   const handleFolderSelect = async () => {
+//     try {
+//       const folderInput = document.createElement('input');
+//       folderInput.setAttribute('type', 'file');
+//       folderInput.setAttribute('webkitdirectory', true);
+
+//       folderInput.addEventListener('change', async (e) => {
+//         const files = e.target.files;
+//         if (files.length > 0) {
+//           const fileList = Array.from(files);
+//           setSelectedFolderFiles(fileList);
+//           setSelectedFolderCheckboxes({});
+
+//           const folderPath = fileList[0].webkitRelativePath;
+
+//           handleCheckboxChange(fileList[0]);
+
+//           setFolderPath(folderPath);
+//         }
+//       });
+
+//       folderInput.click();
+//     } catch (error) {
+//       console.error('Error selecting folder:', error);
+//     }
+//   };
+//   const handleCheckboxChange = async (file) => {
+//     try {
+//       const updatedCheckboxes = { ...selectedFolderCheckboxes };
+//       if (Object.keys(updatedCheckboxes).length === 0) {
+//         // Prevent the first checkbox from being selected initially
+//         updatedCheckboxes[file.name] = false;
+//       } else {
+//         updatedCheckboxes[file.name] = !updatedCheckboxes[file.name];
+//       }
+  
+//       const updatedSelectedFiles = Object.keys(updatedCheckboxes)
+//         .filter((fileName) => updatedCheckboxes[fileName])
+//         .map((fileName) => selectedFolderFiles.find((file) => file.name === fileName));
+  
+//       // Sort the selected files based on the series number
+//       updatedSelectedFiles.sort((a, b) => {
+//         const getSeriesNumber = (filename) => {
+//           const match = filename.match(/(\d+)$/);
+//           return match ? parseInt(match[1]) : 0;
+//         };
+//         return getSeriesNumber(a.name) - getSeriesNumber(b.name);
+//       });
+  
+    
+  
+//       setSelectedFolderCheckboxes(updatedCheckboxes);
+//       setSelectedFiles(updatedSelectedFiles);
+  
+//       const processedData = await Promise.all(updatedSelectedFiles.map(async (file, index) => {
+//         const fileContent = await readFileContent(file);
+//         const processedContent = processFileContent(fileContent);
+//         return { file: file.name, data: processedContent, index };
+//       }));
+  
+//       const updatedGraphData = [...graphData];
+//       processedData.forEach(({ data, index }) => {
+//         updatedGraphData[index] = {
+//           file: updatedSelectedFiles[index].name,
+//           data,
+//         };
+//       });
+  
+//       let maxAbsoluteValue = 0;
+//       updatedGraphData.forEach(({ data }) => {
+//         data.forEach(({ bendingMomentX, bendingMomentY }) => {
+//           const absX = Math.abs(bendingMomentX);
+//           const absY = Math.abs(bendingMomentY);
+//           maxAbsoluteValue = Math.max(maxAbsoluteValue, absX, absY);
+//         });
+//       });
+  
+//       const newGraphLimits = [-maxAbsoluteValue, maxAbsoluteValue];
+//       setGraphData(updatedGraphData);
+//       setShowGraph(true);
+   
+//     } catch (error) {
+//       console.error('Error processing files:', error);
+//     }
+//   };
+  
+//   const closePopup = () => {
+//     setShowPopup(false);
+//     setPopupMessage('');
+//   };
+
+//   const readFileContent = async (file) => {
+//     return new Promise((resolve, reject) => {    
+//       const reader = new FileReader();
+//       reader.onload = (e) => {
+//         const content = e.target.result;
+//         resolve(content);                 
+//       };
+//       reader.onerror = (error) => reject(error);
+//       reader.readAsText(file);
+//     });
+//   };
+//   const processFileContent = (fileContent) => {
+//     const lines = fileContent.split('\n');
+//     const dataStartIndex = lines.findIndex(line => line.startsWith('Tension;Torsion;Bending moment X;Bending moment Y;Time;Temperature'));
+  
+//     if (dataStartIndex !== -1) {
+//       const data = lines.slice(dataStartIndex + 2).map(line => {
+//         const [Tension, _torsion_, bendingMomentX, bendingMomentY, _time__, _temperature__] = line.split(';');
+//         return { bendingMomentX: parseFloat(bendingMomentX), bendingMomentY: parseFloat(bendingMomentY) };
+//       });
+  
+//       const maxLength = Math.max(data.length, data.filter(({ bendingMomentX }) => !isNaN(bendingMomentX)).length, data.filter(({ bendingMomentY }) => !isNaN(bendingMomentY)).length);
+//       const alignedData = data.map(({ bendingMomentX, bendingMomentY }) => ({
+//         bendingMomentX: isNaN(bendingMomentX) ? 0 : bendingMomentX,
+//         bendingMomentY: isNaN(bendingMomentY) ? 0 : bendingMomentY,
+//       }));
+  
+//       // Set default values for filter and points only if data is present
+//       if (data.length > 0) {
+//         setFilter('1');
+//         setPoints('All');
+//       } else {
+//         setFilter('');
+//         setPoints('');
+//       }
+  
+//       while (alignedData.length < maxLength) {
+//         alignedData.push({ bendingMomentX: 0, bendingMomentY: 0 });
+//       }
+  
+//       return alignedData;
+//     } else {
+//       return [];
+//     }
+//   };
+
+//   return (
+//     <div className="bg-white p-2 rounded-md flex flex-col w-full max-w-2xl " onClick={(e) => e.stopPropagation()}>
+//             <label htmlFor="folderInput" className="block">Folder of polarplot files: </label>
+//             <div style={{ display: "flex", border: "1px solid #555555", }}>
+//               <label className="inline-block w-6 h-6" onClick={handleFolderSelect}> 📁</label>
+//               <div className="mt-2">
+//                 <input id="folderInput" type="text" readOnly value={folderPath}className="border border-gray-300 p-2 rounded-md w-full"
+//                   style={{ border: '1px solid #555555' }}/>
+//               </div>
+//             </div>
+//             <label>List of polarplot Files:</label>
+//             <div style={{ height: '400px', overflowY: 'auto', border: '1px solid black', padding: '5px' }}>
+//               <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
+//                 {selectedFolderFiles.map((file, index) => (
+//                   <li key={index} style={{ padding: '5px 0' }}>
+//                     <label>
+//                       <input type="checkbox"checked={selectedFolderCheckboxes[file.name] || false} onChange={() => handleCheckboxChange(file)}/>
+//                       {file.name}
+//                     </label>
+//                   </li>
+//                 ))}
+//               </ul>
+//             </div>
+//             </div>
+//   );
+// };
+
+// export default ToolLifePlot;
+//===========================================
+// import React, { useState, useEffect, useRef } from 'react';
+// import Plotly from 'plotly.js-dist';
+
+// const ToolLifePlot = () => {
+//   const [data, setData] = useState([]);
+//   const graphRef = useRef(null);
+
+//   useEffect(() => {
+//     if (data.length > 0) {
+//       const layout = {
+//         title: 'Tool Life Plot',
+//         xaxis: {
+//           title: 'Time (s)', // X-axis title
+//           tickformat: '%H:%M:%S', // Format X-axis label as hh:mm:ss
+//         },
+//         yaxis: {
+//           title: 'Bending Moment (Nm)', // Y-axis title
+//         },
+//       };
+
+//       // Extract time and bending moment (Y) data from the 'data' state
+//       const time = data.map((point) => point[4]); // Assuming time is in the fifth column
+//       const bendingMomentY = data.map((point) => point[3]); // Assuming bending moment (Y) is in the fourth column
+
+//       const trace = {
+//         x: time,
+//         y: bendingMomentY,
+//         type: 'scatter',
+//         mode: 'lines+points',
+//         marker: {
+//           size: 4,
+//         },
+//       };
+
+//       const plotData = [trace];
+
+//       // Plot the graph using Plotly
+//       Plotly.newPlot(graphRef.current, plotData, layout);
+//     }
+//   }, [data]);
+
+//   const handleImportData = (event) => {
+//     const file = event.target.files[0];
+//     const reader = new FileReader();
+
+//     reader.onload = (event) => {
+//       const fileData = event.target.result;
+//       const parsedData = parseTextData(fileData);
+//       setData(parsedData);
+//     };
+
+//     reader.readAsText(file);
+//   };
+
+//   const parseTextData = (data) => {
+//     const lines = data.split('\n');
+//     const parsedData = [];
+
+//     for (let i = 31; i < lines.length; i++) {
+//         const line = lines[i].trim();
+//         if (line === '') continue;
+
+//         const values = line.split(';');
+//         if (values.length !== 6) {
+//             console.error(`Invalid data at line ${i + 1}: ${line}`);
+//             continue;
+//         }
+
+//         const [tension, torsion, bendingMomentX, bendingMomentY, time, temperature] = values;
+//         const parsedLine = [new Date(+time * 1000), +bendingMomentY]; // Convert time to milliseconds and create a Date object
+//         parsedData.push(parsedLine);
+//     }
+
+//     return parsedData;
+// };
+
+
+//   const stopPropagation = (e) => {
+//     e.stopPropagation();
+//   };
+
+//   return (
+//     <div style={{ backgroundColor: 'white' }}>
+//       <input type="file" accept=".txt,.csv" onChange={handleImportData} onClick={stopPropagation} />
+//       <div ref={graphRef} />
+//     </div>
+//   );
+// };
+
+// export default ToolLifePlot;
+
+//--------------------------------------
+import React, { useState, useEffect, useRef } from 'react';
+import Plotly from 'plotly.js-dist';
+
+const ToolLifePlot = () => {
+  const graphRef = useRef(null);
+  const [data, setData] = useState([]);
+  const [selectedOption, setSelectedOption] = useState('torsion');
+
+  const timePoints = ['00:00:15', '00:00:20', '00:00:30', '00:00:40'];
+
+  useEffect(() => {
+    if (data.length > 0) {
+      const layout = {
+        title: `${selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1)} vs Time`,
+        xaxis: {
+          title: 'Time',
+          tickvals: timePoints,
+          ticktext: timePoints,
+          tickmode: 'array',
+          tickformat: '%H:%M:%S',
+        },
+        yaxis: {
+          title: `${selectedOption.charAt(0).toUpperCase() + selectedOption.slice(1)} (Nm)`,
+          tick0: 0,
+          dtick: 0.2,
+        },
+      };
+
+      const plotData = {
+        x: data.map((point) => point[0]),
+        y: data.map((point) => point[1]),
+        type: 'scatter',
+        mode: 'lines+markers',
+      };
+
+      Plotly.newPlot(graphRef.current, [plotData], layout);
+    }
+  }, [data, selectedOption]);
+
+  const handleImportData = (event) => {
+    const file = event.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const fileData = event.target.result;
+      const parsedData = parseTextData(fileData);
+      setData(parsedData);
+    };
+
+    reader.readAsText(file);
+  };
+
+  const parseTextData = (data) => {
+    const lines = data.split('\n').slice(11); // Start from line 11 to skip headers
+    const parsedData = lines
+      .map((line, index) => {
+        const fields = line.split(';');
+        const [tension, torsion, bendingMomentY, time, temperature] = fields.map(parseFloat);
+        if (isNaN(tension) || isNaN(torsion) || isNaN(bendingMomentY) || isNaN(time) || isNaN(temperature)) {
+          console.error(`Invalid data at line ${index + 1}: ${line}`);
+          return null; // Skip invalid lines
+        }
+        switch (selectedOption) {
+          case 'tension':
+            return [time, tension];
+          case 'torsion':
+            return [time, torsion];
+          case 'bendingMomentY':
+            return [time, bendingMomentY];
+          default:
+            return null;
+        }
+      })
+      .filter((point) => point !== null);
+
+    return parsedData;
+  };
+
+  const handleRadioChange = (event) => {
+    setSelectedOption(event.target.value);
+  };
+
+  const stopPropagation = (e) => {
+    e.stopPropagation();
+  };
+
+  return (
+    <div style={{ backgroundColor: 'white' }} onClick={stopPropagation}>
+      <input type="file" accept=".txt,.csv" onChange={handleImportData} onClick={stopPropagation} />
+      <div>
+        <label>
+          Tension
+          <input type="radio" value="tension" checked={selectedOption === 'tension'} onChange={handleRadioChange} />
+        </label>
+        <label>
+          Torsion
+          <input type="radio" value="torsion" checked={selectedOption === 'torsion'} onChange={handleRadioChange} />
+        </label>
+        <label>
+          Bending Moment Y
+          <input
+            type="radio"
+            value="bendingMomentY"
+            checked={selectedOption === 'bendingMomentY'}
+            onChange={handleRadioChange}
+          />
+        </label>
+      </div>
+      <div ref={graphRef} style={{ width: '1000px', height: '400px' }}></div>
+    </div>
+  );
+};
+
+export default ToolLifePlot;
+
